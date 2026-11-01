@@ -3885,29 +3885,31 @@ function novoPedido() {
 }
 
 // Adiciona produto ao pedido
+
 function adicionarItemPedidoSeparacao() {
   if (!pedidoAtualEmEdicao) {
     mostrarToast('❌ Crie um pedido primeiro!', 'error');
     return;
   }
 
-  const pid = document.getElementById('pedidoNovoProdutoSelect').value;
+  const valorProduto = document.getElementById('pedidoNovoProdutoSelect').value;
   const qtdPacotes = parseInt(
     document.getElementById('pedidoNovoQuantidadeInput').value
   );
 
-  if (!pid || !qtdPacotes || qtdPacotes <= 0) {
-    mostrarToast('❌ Selecione o produto e a quantidade!', 'error');
-    return;
-  }
-
-  const produto = state.produtos.find(p => p.id === pid);
+  const produto = obterProdutoSelecionadoPedido(valorProduto);
 
   if (!produto) {
-    mostrarToast('❌ Produto não encontrado!', 'error');
+    mostrarToast('❌ Selecione ou digite um produto válido!', 'error');
     return;
   }
 
+  if (!qtdPacotes || qtdPacotes <= 0) {
+    mostrarToast('❌ Informe uma quantidade válida de pacotes!', 'error');
+    return;
+  }
+
+  const pid = produto.id;
   const pacotesPorVolume = parseInt(produto.pacotesPorVolume) || 50;
 
   salvarEstadoParaUndo();
@@ -3930,12 +3932,13 @@ function adicionarItemPedidoSeparacao() {
   item.pacotes += qtdPacotes;
   item.caixas = Math.ceil(item.pacotes / pacotesPorVolume);
 
-  // Se a quantidade mudar, exige nova escolha de modalidade.
+  // Se a quantidade mudar, exige nova conferência da modalidade.
   item.modalidade = '';
   item.retiradas = [];
 
   setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
 
+  document.getElementById('pedidoNovoProdutoSelect').value = '';
   document.getElementById('pedidoNovoQuantidadeInput').value = '';
 
   atualizarPedidoNovo();
@@ -3943,6 +3946,7 @@ function adicionarItemPedidoSeparacao() {
 
   mostrarToast(`✅ ${qtdPacotes} pacotes adicionados!`, 'success');
 }
+
 
 // Calcula o consumo de insumos para produção
 function calcularConsumoProducaoPedido(produtoId, quantidadePacotes) {
@@ -3979,26 +3983,46 @@ function calcularConsumoProducaoPedido(produtoId, quantidadePacotes) {
 }
 
 // Define se o produto será retirado ou produzido
+
 function definirModalidadePedido(produtoId, modalidade) {
   if (!pedidoAtualEmEdicao) return;
 
   const item = pedidoAtualEmEdicao.itens[produtoId];
-
   if (!item) return;
 
   if (!['retirar', 'produzir'].includes(modalidade)) return;
 
   salvarEstadoParaUndo();
 
+  // Apenas troca a modalidade.
+  // Não altera estoque nem apaga as quantidades já selecionadas.
   item.modalidade = modalidade;
-
-  if (modalidade !== 'retirar') {
-    item.retiradas = [];
-  }
 
   setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
 
   atualizarPedidoNovo();
+}
+
+function obterProdutoSelecionadoPedido(valor) {
+  const texto = valor.trim();
+
+  if (!texto) return null;
+
+  // Procura pelo nome acompanhado do código ou ID.
+  let produto = state.produtos.find(p =>
+    texto === `${p.nome} (${p.codigoInterno || p.id})`
+  );
+
+  if (produto) return produto;
+
+  // Também permite digitar o nome ou código diretamente.
+  const encontrados = state.produtos.filter(p =>
+    p.nome.toLowerCase() === texto.toLowerCase() ||
+    (p.codigoInterno &&
+      p.codigoInterno.toLowerCase() === texto.toLowerCase())
+  );
+
+  return encontrados.length === 1 ? encontrados[0] : null;
 }
 
 // Atualiza a quantidade selecionada em cada posição
@@ -4056,6 +4080,7 @@ function removerItemPedidoSeparacao(produtoId) {
 }
 
 // Renderiza os cards na criação do pedido
+
 function atualizarPedidoNovo() {
   const c = document.getElementById('pedidoNovoItens');
 
@@ -4078,7 +4103,6 @@ function atualizarPedidoNovo() {
     const sobra = item.pacotes % pacotesPorVolume;
 
     const disp = buscarDisponibilidadeProduto(item.produtoId);
-
     const retiradas = item.retiradas || [];
 
     const totalRetirada = retiradas.reduce(
@@ -4130,17 +4154,17 @@ function atualizarPedidoNovo() {
       `;
     }).join('');
 
-    let modalidadeHtml = '';
+    let detalhesHtml = '';
 
     if (item.modalidade === 'retirar') {
-      modalidadeHtml = `
+      detalhesHtml = `
         <div style="
           margin-top:12px;
           padding:12px;
           background:var(--bg-subtle);
           border-radius:8px;
         ">
-          <strong>📦 Selecionar caixas nas prateleiras</strong>
+          <strong>📦 Retirada da prateleira</strong>
 
           ${locaisHtml || '<p>Não há estoque disponível.</p>'}
 
@@ -4155,13 +4179,15 @@ function atualizarPedidoNovo() {
           </div>
         </div>
       `;
-    } else if (item.modalidade === 'produzir') {
+    }
+
+    if (item.modalidade === 'produzir') {
       const consumo = calcularConsumoProducaoPedido(
         item.produtoId,
         item.pacotes
       );
 
-      modalidadeHtml = `
+      detalhesHtml = `
         <div style="
           margin-top:12px;
           padding:12px;
@@ -4173,30 +4199,11 @@ function atualizarPedidoNovo() {
           <p>Pacotes a produzir: <strong>${item.pacotes}</strong></p>
           <p>Caixas a utilizar: <strong>${consumo.caixas}</strong></p>
           <p>Embalagens: <strong>${consumo.embalagens}</strong></p>
-          <p>Modelo da caixa: <strong>${consumo.modeloCaixa}</strong></p>
 
           <small style="color:var(--text-muted);">
-            A produção será exatamente de ${item.pacotes} pacotes.
-            Somente as caixas serão arredondadas para cima.
+            Produção exata de ${item.pacotes} pacotes.
+            As caixas serão arredondadas para cima.
           </small>
-        </div>
-      `;
-    } else {
-      modalidadeHtml = `
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
-          <button
-            class="btn btn-md btn-info"
-            onclick="definirModalidadePedido('${item.produtoId}','retirar')"
-          >
-            📦 Retirar da prateleira
-          </button>
-
-          <button
-            class="btn btn-md btn-success"
-            onclick="definirModalidadePedido('${item.produtoId}','produzir')"
-          >
-            🏭 Produzir pedido
-          </button>
         </div>
       `;
     }
@@ -4232,7 +4239,30 @@ function atualizarPedidoNovo() {
           ${sobra > 0 ? ` + ${sobra} pacotes` : ''}
         </div>
 
-        ${modalidadeHtml}
+        <div style="
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          margin-top:15px;
+        ">
+          <button
+            class="btn btn-md ${item.modalidade === 'retirar' ? 'btn-primary' : 'btn-info'}"
+            onclick="definirModalidadePedido('${item.produtoId}','retirar')"
+          >
+            📦 Retirar da prateleira
+            ${item.modalidade === 'retirar' ? '✓' : ''}
+          </button>
+
+          <button
+            class="btn btn-md ${item.modalidade === 'produzir' ? 'btn-primary' : 'btn-success'}"
+            onclick="definirModalidadePedido('${item.produtoId}','produzir')"
+          >
+            🏭 Produzir
+            ${item.modalidade === 'produzir' ? '✓' : ''}
+          </button>
+        </div>
+
+        ${detalhesHtml}
       </div>
     `;
   }).join('');
@@ -4274,12 +4304,20 @@ function atualizarPedidoNovo() {
     ${itensHtml || '<p style="color:var(--text-muted);">Nenhum item.</p>'}
 
     <div style="display:flex;gap:10px;margin-top:15px;flex-wrap:wrap;">
-      <select id="pedidoNovoProdutoSelect" style="flex:2;min-width:200px;">
-        <option value="">Selecione o produto...</option>
-        ${state.produtos.map(p =>
-          `<option value="${p.id}">${p.nome}</option>`
-        ).join('')}
-      </select>
+      <input
+        type="text"
+        id="pedidoNovoProdutoSelect"
+        list="pedidoNovoProdutosLista"
+        placeholder="Digite ou selecione o produto..."
+        autocomplete="off"
+        style="flex:2;min-width:200px;"
+      >
+
+      <datalist id="pedidoNovoProdutosLista">
+        ${state.produtos.map(p => `
+          <option value="${p.nome} (${p.codigoInterno || p.id})"></option>
+        `).join('')}
+      </datalist>
 
       <input
         type="number"
@@ -4305,6 +4343,7 @@ function atualizarPedidoNovo() {
     </div>
   `;
 }
+
 
 // Confirma e efetua a baixa do pedido
 function _finalizarPedido(pedido) {
