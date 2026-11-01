@@ -3843,29 +3843,48 @@ function verificarAlertasInjecao() {
   console.log(`🔔 ${produtosSemMaquina.length} produto(s) aguardando injeção`);
 }
 
+
 // ============================================================
 // PEDIDOS DE SEPARAÇÃO
 // ============================================================
 let pedidoAtualEmEdicao = null;
 
+// Cria um novo pedido
 function novoPedido() {
   const codigo = document.getElementById('codigoPedidoInput').value.trim();
-  if (!codigo) { mostrarToast('❌ Digite um código!', 'error'); return; }
-  if (state.pedidosSeparar.some(p => p.codigo === codigo)) {
-    mostrarToast('❌ Já existe um pedido com esse código!', 'error'); return;
+
+  if (!codigo) {
+    mostrarToast('❌ Digite um código!', 'error');
+    return;
   }
-  const novo = { codigo, itens: {}, dataCriacao: new Date().toLocaleString(), status: 'separar' };
+
+  if (state.pedidosSeparar.some(p => p.codigo === codigo) ||
+      state.pedidosFinalizados.some(p => p.codigo === codigo)) {
+    mostrarToast('❌ Já existe um pedido com esse código!', 'error');
+    return;
+  }
+
+  const novo = {
+    codigo,
+    itens: {},
+    dataCriacao: new Date().toLocaleString(),
+    status: 'separar'
+  };
+
   state.pedidosSeparar.push(novo);
-  setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
   pedidoAtualEmEdicao = novo;
+
+  setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
+
   document.getElementById('codigoPedidoInput').value = '';
+
   atualizarPedidoNovo();
   atualizarListasPedidos();
+
   mostrarToast(`✅ Pedido ${codigo} criado!`, 'success');
 }
 
-
-
+// Adiciona produto ao pedido
 function adicionarItemPedidoSeparacao() {
   if (!pedidoAtualEmEdicao) {
     mostrarToast('❌ Crie um pedido primeiro!', 'error');
@@ -3873,289 +3892,814 @@ function adicionarItemPedidoSeparacao() {
   }
 
   const pid = document.getElementById('pedidoNovoProdutoSelect').value;
-  const qtdPacotes = parseInt(document.getElementById('pedidoNovoQuantidadeInput').value);
+  const qtdPacotes = parseInt(
+    document.getElementById('pedidoNovoQuantidadeInput').value
+  );
 
   if (!pid || !qtdPacotes || qtdPacotes <= 0) {
-    mostrarToast('❌ Selecione o produto e a quantidade em pacotes!', 'error');
+    mostrarToast('❌ Selecione o produto e a quantidade!', 'error');
     return;
   }
 
   const produto = state.produtos.find(p => p.id === pid);
-  if (!produto) return;
 
-  const pacotesPorVolume = produto.pacotesPorVolume || 50;
-  const caixas = Math.ceil(qtdPacotes / pacotesPorVolume);
+  if (!produto) {
+    mostrarToast('❌ Produto não encontrado!', 'error');
+    return;
+  }
+
+  const pacotesPorVolume = parseInt(produto.pacotesPorVolume) || 50;
 
   salvarEstadoParaUndo();
 
-  // Consulta disponibilidade sem reservar estoque
-  const disp = buscarDisponibilidadeProduto(pid);
-
-  // Adiciona ou atualiza o item do pedido
   if (!pedidoAtualEmEdicao.itens[pid]) {
     pedidoAtualEmEdicao.itens[pid] = {
       produtoId: pid,
       nome: produto.nome,
       codigoInterno: produto.codigoInterno || '',
-      pacotesPorVolume: pacotesPorVolume,
+      pacotesPorVolume,
       pacotes: 0,
-      caixas: 0
+      caixas: 0,
+      modalidade: '',
+      retiradas: []
     };
   }
 
-  pedidoAtualEmEdicao.itens[pid].pacotes += qtdPacotes;
-  pedidoAtualEmEdicao.itens[pid].caixas += caixas;
+  const item = pedidoAtualEmEdicao.itens[pid];
 
-  // Salva somente o pedido, sem alterar a carga
+  item.pacotes += qtdPacotes;
+  item.caixas = Math.ceil(item.pacotes / pacotesPorVolume);
+
+  // Se a quantidade mudar, exige nova escolha de modalidade.
+  item.modalidade = '';
+  item.retiradas = [];
+
   setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
 
-  atualizarPedidoNovo();
+  document.getElementById('pedidoNovoQuantidadeInput').value = '';
 
-  if (disp.totalDisponivel < caixas) {
-    mostrarToast(
-      `⚠️ Pedido adicionado! Estoque disponível: ${disp.totalDisponivel} cx. Necessárias: ${caixas} cx.`,
-      'warning'
-    );
-  } else {
-    mostrarToast(
-      `✅ ${qtdPacotes} pacotes (${caixas} caixas) adicionados!`,
-      'success'
-    );
-  }
-}
-
-
-
-function removerItemPedidoSeparacao(produtoId) {
-  if (!pedidoAtualEmEdicao) return;
-  const item = pedidoAtualEmEdicao.itens[produtoId];
-  if (!item) return;
-  salvarEstadoParaUndo();
-  state.carga = state.carga.filter(c => !(c.id === produtoId && c.pedidoCodigo === pedidoAtualEmEdicao.codigo));
-  delete pedidoAtualEmEdicao.itens[produtoId];
-  setData(STORAGE_KEYS.carga, state.carga);
-  setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
-  atualizarPedidoNovo();
-  carregarPrateleiras();
-  carregarCarga();
-  atualizarDashboard();
-  mostrarToast('🗑️ Removido!', 'warning');
-}
-
-function _finalizarPedido(pedido) {
-  Object.values(pedido.itens).forEach(item => {
-    const pid = item.produtoId;
-    const reservas = state.carga.filter(c => c.id === pid && c.pedidoCodigo === pedido.codigo);
-    reservas.forEach(r => {
-      const s = state.prateleiras.find(x => x.id === r.prateleira);
-      if (s) {
-        const idx = s.produtos.findIndex(p => p.id === pid && p.posicao === r.posicao);
-        if (idx !== -1) {
-          s.produtos[idx].quantidade -= r.quantidade;
-          if (s.produtos[idx].quantidade <= 0) s.produtos.splice(idx, 1);
-        }
-      }
-      const produto = state.produtos.find(p => p.id === pid);
-      if (produto) produto.quantidade = Math.max(0, (produto.quantidade || 0) - r.quantidade);
-    });
-    state.carga = state.carga.filter(c => !(c.id === pid && c.pedidoCodigo === pedido.codigo));
-  });
-  state.pedidosSeparar = state.pedidosSeparar.filter(p => p.codigo !== pedido.codigo);
-  pedido.status = 'finalizado';
-  pedido.dataFinalizacao = new Date().toLocaleString();
-  state.pedidosFinalizados.push(pedido);
-  setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
-  setData(STORAGE_KEYS.pedidosFinalizados, state.pedidosFinalizados);
-  setData(STORAGE_KEYS.prateleiras, state.prateleiras);
-  setData(STORAGE_KEYS.carga, state.carga);
-  setData(STORAGE_KEYS.produtos, state.produtos);
-  registrarHistorico(`Pedido ${pedido.codigo}`, 'Pedido Finalizado', 0, `Itens: ${Object.values(pedido.itens).map(i => `${i.nome}: ${i.pacotes} cx`).join(', ')}`);
-}
-
-function finalizarPedidoSeparacao() {
-  if (!pedidoAtualEmEdicao) { mostrarToast('❌ Nenhum pedido em edição!', 'error'); return; }
-  if (Object.keys(pedidoAtualEmEdicao.itens).length === 0) { mostrarToast('❌ Pedido vazio!', 'error'); return; }
-  if (!confirm(`Finalizar pedido ${pedidoAtualEmEdicao.codigo}?`)) return;
-  salvarEstadoParaUndo();
-  _finalizarPedido(pedidoAtualEmEdicao);
-  pedidoAtualEmEdicao = null;
   atualizarPedidoNovo();
   atualizarListasPedidos();
-  carregarPrateleiras();
-  carregarCarga();
-  atualizarDashboard();
-  mostrarToast('✅ Finalizado!', 'success');
+
+  mostrarToast(`✅ ${qtdPacotes} pacotes adicionados!`, 'success');
 }
 
+// Calcula o consumo de insumos para produção
+function calcularConsumoProducaoPedido(produtoId, quantidadePacotes) {
+  const produto = state.produtos.find(p => p.id === produtoId);
 
+  if (!produto) return null;
 
+  const pacotesPorVolume = parseInt(produto.pacotesPorVolume) || 50;
 
+  const config = state.produtoInsumoMap[produtoId] || {
+    modeloCaixa: 'A',
+    embalagemPorCaixa: pacotesPorVolume,
+    tipoEmbalagem: 'individual'
+  };
+
+  const embalagemPorCaixa =
+    parseFloat(config.embalagemPorCaixa) || pacotesPorVolume;
+
+  // Caixas sempre arredondadas para cima.
+  const caixas = Math.ceil(quantidadePacotes / pacotesPorVolume);
+
+  // Embalagens calculadas proporcionalmente aos pacotes produzidos.
+  const embalagens = Math.ceil(
+    quantidadePacotes * embalagemPorCaixa / pacotesPorVolume
+  );
+
+  return {
+    caixas,
+    embalagens,
+    modeloCaixa: config.modeloCaixa || 'A',
+    usa40x50: usaEmbalagem40x50(produto),
+    pacotesProduzidos: quantidadePacotes
+  };
+}
+
+// Define se o produto será retirado ou produzido
+function definirModalidadePedido(produtoId, modalidade) {
+  if (!pedidoAtualEmEdicao) return;
+
+  const item = pedidoAtualEmEdicao.itens[produtoId];
+
+  if (!item) return;
+
+  if (!['retirar', 'produzir'].includes(modalidade)) return;
+
+  salvarEstadoParaUndo();
+
+  item.modalidade = modalidade;
+
+  if (modalidade !== 'retirar') {
+    item.retiradas = [];
+  }
+
+  setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
+
+  atualizarPedidoNovo();
+}
+
+// Atualiza a quantidade selecionada em cada posição
+function atualizarQuantidadeRetirada(produtoId, prateleiraId, posicao, valor) {
+  if (!pedidoAtualEmEdicao) return;
+
+  const item = pedidoAtualEmEdicao.itens[produtoId];
+
+  if (!item) return;
+
+  if (!item.retiradas) item.retiradas = [];
+
+  let retirada = item.retiradas.find(r =>
+    r.prateleiraId === prateleiraId &&
+    String(r.posicao) === String(posicao)
+  );
+
+  const quantidade = Math.max(0, parseInt(valor) || 0);
+
+  if (!retirada && quantidade > 0) {
+    item.retiradas.push({
+      prateleiraId,
+      posicao,
+      quantidade
+    });
+  } else if (retirada) {
+    retirada.quantidade = quantidade;
+
+    if (quantidade === 0) {
+      item.retiradas = item.retiradas.filter(r => r !== retirada);
+    }
+  }
+
+  setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
+
+  atualizarPedidoNovo();
+}
+
+// Remove item do pedido
+function removerItemPedidoSeparacao(produtoId) {
+  if (!pedidoAtualEmEdicao) return;
+
+  if (!pedidoAtualEmEdicao.itens[produtoId]) return;
+
+  salvarEstadoParaUndo();
+
+  delete pedidoAtualEmEdicao.itens[produtoId];
+
+  setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
+
+  atualizarPedidoNovo();
+  atualizarListasPedidos();
+
+  mostrarToast('🗑️ Item removido!', 'warning');
+}
+
+// Renderiza os cards na criação do pedido
 function atualizarPedidoNovo() {
   const c = document.getElementById('pedidoNovoItens');
+
   if (!c) return;
 
   if (!pedidoAtualEmEdicao) {
-    c.innerHTML = '<p style="color:var(--text-muted);">Inicie um pedido para adicionar itens.</p>';
+    c.innerHTML =
+      '<p style="color:var(--text-muted);">Inicie um pedido para adicionar itens.</p>';
     return;
   }
 
-  const itens = pedidoAtualEmEdicao.itens;
+  const itens = Object.values(pedidoAtualEmEdicao.itens || {});
 
   let totalPacotes = 0;
   let totalCaixas = 0;
 
-  const itensHtml = Object.values(itens).map(item => {
-
+  const itensHtml = itens.map(item => {
     const pacotesPorVolume = item.pacotesPorVolume || 50;
-
     const caixas = Math.ceil(item.pacotes / pacotesPorVolume);
     const sobra = item.pacotes % pacotesPorVolume;
 
-    // Consulta os locais disponíveis, sem efetuar reservas
     const disp = buscarDisponibilidadeProduto(item.produtoId);
 
-    const locais = disp.locais.map(l =>
-      `${l.prateleiraNome || l.prateleiraId}${l.posicao}: ${l.disponivel} cx disponíveis`
-    ).join('<br>');
+    const retiradas = item.retiradas || [];
+
+    const totalRetirada = retiradas.reduce(
+      (a, r) => a + r.quantidade, 0
+    );
 
     totalPacotes += item.pacotes;
     totalCaixas += caixas;
 
-    return `
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid var(--border); color:var(--text);">
-        <div style="flex:1;">
-          <strong>${item.nome}</strong> (${item.codigoInterno || 'sem código'})<br>
+    const locaisHtml = disp.locais.map(l => {
+      const selecionado = retiradas.find(r =>
+        r.prateleiraId === l.prateleiraId &&
+        String(r.posicao) === String(l.posicao)
+      );
+
+      const quantidade = selecionado ? selecionado.quantidade : 0;
+
+      return `
+        <div style="
+          display:flex;
+          justify-content:space-between;
+          align-items:center;
+          gap:10px;
+          padding:8px;
+          border-bottom:1px solid var(--border);
+        ">
+          <div>
+            <strong>${l.prateleiraNome || l.prateleiraId} - Posição ${l.posicao}</strong>
+            <br>
+            <small style="color:var(--text-muted);">
+              Disponível: ${l.disponivel} caixas
+            </small>
+          </div>
+
+          <input
+            type="number"
+            min="0"
+            max="${l.disponivel}"
+            value="${quantidade}"
+            style="width:85px;"
+            onchange="atualizarQuantidadeRetirada(
+              '${item.produtoId}',
+              '${l.prateleiraId}',
+              '${l.posicao}',
+              this.value
+            )"
+          >
+        </div>
+      `;
+    }).join('');
+
+    let modalidadeHtml = '';
+
+    if (item.modalidade === 'retirar') {
+      modalidadeHtml = `
+        <div style="
+          margin-top:12px;
+          padding:12px;
+          background:var(--bg-subtle);
+          border-radius:8px;
+        ">
+          <strong>📦 Selecionar caixas nas prateleiras</strong>
+
+          ${locaisHtml || '<p>Não há estoque disponível.</p>'}
+
+          <div style="margin-top:10px;font-weight:700;">
+            Selecionadas: ${totalRetirada} / ${caixas} caixas
+          </div>
+
+          <div style="color:${totalRetirada === caixas ? 'var(--success)' : 'var(--danger)'};">
+            ${totalRetirada === caixas
+              ? '✅ Quantidade completa'
+              : `Faltam ${Math.max(0, caixas - totalRetirada)} caixas`}
+          </div>
+        </div>
+      `;
+    } else if (item.modalidade === 'produzir') {
+      const consumo = calcularConsumoProducaoPedido(
+        item.produtoId,
+        item.pacotes
+      );
+
+      modalidadeHtml = `
+        <div style="
+          margin-top:12px;
+          padding:12px;
+          background:var(--bg-subtle);
+          border-radius:8px;
+        ">
+          <strong>🏭 Produção do pedido</strong>
+
+          <p>Pacotes a produzir: <strong>${item.pacotes}</strong></p>
+          <p>Caixas a utilizar: <strong>${consumo.caixas}</strong></p>
+          <p>Embalagens: <strong>${consumo.embalagens}</strong></p>
+          <p>Modelo da caixa: <strong>${consumo.modeloCaixa}</strong></p>
 
           <small style="color:var(--text-muted);">
-            ${item.codigoInterno ? '✅' : '❌'} ${item.codigoInterno || item.nome}: ${item.pacotes} pacotes → ${caixas} caixas${sobra > 0 ? ` + ${sobra} pacotes` : ''}<br>
-            Estoque disponível: ${disp.totalDisponivel} cx<br>
-            Locais disponíveis:<br>
-            ${locais || 'Nenhum local disponível'}<br>
-            Necessário produzir: ${Math.max(0, caixas - disp.totalDisponivel)} caixas
+            A produção será exatamente de ${item.pacotes} pacotes.
+            Somente as caixas serão arredondadas para cima.
           </small>
         </div>
+      `;
+    } else {
+      modalidadeHtml = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+          <button
+            class="btn btn-md btn-info"
+            onclick="definirModalidadePedido('${item.produtoId}','retirar')"
+          >
+            📦 Retirar da prateleira
+          </button>
 
-        <button class="btn btn-xs btn-danger" onclick="removerItemPedidoSeparacao('${item.produtoId}')">🗑️</button>
+          <button
+            class="btn btn-md btn-success"
+            onclick="definirModalidadePedido('${item.produtoId}','produzir')"
+          >
+            🏭 Produzir pedido
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="
+        border:1px solid var(--border);
+        border-radius:10px;
+        padding:15px;
+        margin-bottom:12px;
+        background:var(--bg);
+        color:var(--text);
+      ">
+        <div style="display:flex;justify-content:space-between;gap:10px;">
+          <div>
+            <strong>${item.nome}</strong>
+            <br>
+            <small>${item.codigoInterno || 'Sem código'}</small>
+          </div>
+
+          <button
+            class="btn btn-xs btn-danger"
+            onclick="removerItemPedidoSeparacao('${item.produtoId}')"
+          >
+            🗑️
+          </button>
+        </div>
+
+        <div style="margin-top:10px;">
+          <strong>${item.pacotes} pacotes</strong>
+          →
+          <strong>${caixas} caixas</strong>
+          ${sobra > 0 ? ` + ${sobra} pacotes` : ''}
+        </div>
+
+        ${modalidadeHtml}
       </div>
     `;
   }).join('');
 
   c.innerHTML = `
-    <h4 style="color:var(--text);">Pedido: ${pedidoAtualEmEdicao.codigo}</h4>
+    <h4 style="color:var(--text);">
+      Pedido: ${pedidoAtualEmEdicao.codigo}
+    </h4>
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:15px 0; padding:15px; background:var(--bg-subtle); border-radius:8px; border:1px solid var(--border);">
-
+    <div style="
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      margin:15px 0;
+      padding:15px;
+      background:var(--bg-subtle);
+      border-radius:8px;
+      border:1px solid var(--border);
+    ">
       <div style="text-align:center;">
-        <div style="font-size:24px; font-weight:800; color:var(--primary);">${totalPacotes}</div>
-        <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Total Pacotes</div>
+        <div style="font-size:24px;font-weight:800;color:var(--primary);">
+          ${totalPacotes}
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">
+          TOTAL PACOTES
+        </div>
       </div>
 
       <div style="text-align:center;">
-        <div style="font-size:24px; font-weight:800; color:var(--accent);">${totalCaixas}</div>
-        <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Total Caixas</div>
+        <div style="font-size:24px;font-weight:800;color:var(--accent);">
+          ${totalCaixas}
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">
+          TOTAL CAIXAS
+        </div>
       </div>
-
     </div>
 
     ${itensHtml || '<p style="color:var(--text-muted);">Nenhum item.</p>'}
 
-    <div style="display:flex; gap:10px; margin-top:15px; flex-wrap:wrap;">
-
-      <select id="pedidoNovoProdutoSelect" style="flex:2; min-width:200px;">
+    <div style="display:flex;gap:10px;margin-top:15px;flex-wrap:wrap;">
+      <select id="pedidoNovoProdutoSelect" style="flex:2;min-width:200px;">
         <option value="">Selecione o produto...</option>
-        ${state.produtos.map(p => `<option value="${p.id}">${p.nome}</option>`).join('')}
+        ${state.produtos.map(p =>
+          `<option value="${p.id}">${p.nome}</option>`
+        ).join('')}
       </select>
 
-      <input type="number" id="pedidoNovoQuantidadeInput" placeholder="Qtd (pacotes)" min="1" style="flex:1; min-width:120px;">
+      <input
+        type="number"
+        id="pedidoNovoQuantidadeInput"
+        placeholder="Qtd (pacotes)"
+        min="1"
+        style="flex:1;min-width:120px;"
+      >
 
-      <button class="btn btn-md btn-success" onclick="adicionarItemPedidoSeparacao()">➕ Adicionar</button>
+      <button
+        class="btn btn-md btn-success"
+        onclick="adicionarItemPedidoSeparacao()"
+      >
+        ➕ Adicionar
+      </button>
 
-      <button class="btn btn-md btn-primary" onclick="finalizarPedidoSeparacao()">✅ Finalizar</button>
-
+      <button
+        class="btn btn-md btn-primary"
+        onclick="finalizarPedidoSeparacao()"
+      >
+        ✅ Enviar para Separar
+      </button>
     </div>
   `;
 }
 
+// Confirma e efetua a baixa do pedido
+function _finalizarPedido(pedido) {
+  const itens = Object.values(pedido.itens || {});
 
+  if (itens.length === 0) {
+    mostrarToast('❌ Pedido sem itens!', 'error');
+    return false;
+  }
 
+  // PRIMEIRA ETAPA: validar todos os itens antes de qualquer baixa.
+  for (const item of itens) {
+    const caixas = Math.ceil(
+      item.pacotes / (item.pacotesPorVolume || 50)
+    );
 
+    if (item.modalidade === 'retirar') {
+      const retiradas = item.retiradas || [];
+
+      const total = retiradas.reduce(
+        (a, r) => a + (parseInt(r.quantidade) || 0), 0
+      );
+
+      if (total !== caixas) {
+        mostrarToast(
+          `❌ ${item.nome}: selecione exatamente ${caixas} caixas.`,
+          'error'
+        );
+        return false;
+      }
+
+      for (const r of retiradas) {
+        const disp = buscarDisponibilidadeProduto(item.produtoId);
+
+        const local = disp.locais.find(l =>
+          l.prateleiraId === r.prateleiraId &&
+          String(l.posicao) === String(r.posicao)
+        );
+
+        if (!local || r.quantidade <= 0 || r.quantidade > local.disponivel) {
+          mostrarToast(
+            `❌ Estoque insuficiente em ${r.prateleiraId}, posição ${r.posicao}.`,
+            'error'
+          );
+          return false;
+        }
+      }
+
+    } else if (item.modalidade === 'produzir') {
+      const consumo = calcularConsumoProducaoPedido(
+        item.produtoId,
+        item.pacotes
+      );
+
+      const disponivelCaixas =
+        consumo.modeloCaixa === 'B'
+          ? state.insumos.caixaModeloB
+          : state.insumos.caixaModeloA;
+
+      const disponivelEmbalagens =
+        consumo.usa40x50
+          ? state.insumos.embalagem40x50 || 0
+          : state.insumos.embalagens[item.produtoId] || 0;
+
+      if (disponivelCaixas < consumo.caixas) {
+        mostrarToast(
+          `❌ ${item.nome}: faltam caixas Modelo ${consumo.modeloCaixa}.`,
+          'error'
+        );
+        return false;
+      }
+
+      if (disponivelEmbalagens < consumo.embalagens) {
+        mostrarToast(
+          `❌ ${item.nome}: faltam embalagens.`,
+          'error'
+        );
+        return false;
+      }
+
+    } else {
+      mostrarToast(
+        `❌ Escolha retirar ou produzir para ${item.nome}.`,
+        'error'
+      );
+      return false;
+    }
+  }
+
+  // SEGUNDA ETAPA: executar as baixas.
+  for (const item of itens) {
+    const produto = state.produtos.find(p => p.id === item.produtoId);
+
+    if (item.modalidade === 'retirar') {
+      (item.retiradas || []).forEach(r => {
+        const prateleira = state.prateleiras.find(
+          p => p.id === r.prateleiraId
+        );
+
+        if (!prateleira) return;
+
+        const posicao = prateleira.produtos.find(p =>
+          p.id === item.produtoId &&
+          String(p.posicao) === String(r.posicao)
+        );
+
+        if (!posicao) return;
+
+        posicao.quantidade -= r.quantidade;
+
+        if (posicao.quantidade <= 0) {
+          prateleira.produtos = prateleira.produtos.filter(
+            p => p !== posicao
+          );
+        }
+
+        if (produto) {
+          produto.quantidade = Math.max(
+            0,
+            (produto.quantidade || 0) - r.quantidade
+          );
+        }
+      });
+
+    } else if (item.modalidade === 'produzir') {
+      const consumo = calcularConsumoProducaoPedido(
+        item.produtoId,
+        item.pacotes
+      );
+
+      if (consumo.modeloCaixa === 'B') {
+        state.insumos.caixaModeloB -= consumo.caixas;
+      } else {
+        state.insumos.caixaModeloA -= consumo.caixas;
+      }
+
+      if (consumo.usa40x50) {
+        state.insumos.embalagem40x50 -= consumo.embalagens;
+      } else {
+        state.insumos.embalagens[item.produtoId] =
+          (state.insumos.embalagens[item.produtoId] || 0) -
+          consumo.embalagens;
+      }
+
+      // Mantém a baixa dos componentes injetados vinculados ao produto.
+      if (produto) {
+        descontarInjetadosPorFamilia(produto, consumo.caixas);
+      }
+
+      registrarHistorico(
+        item.nome,
+        'Produção para Pedido',
+        item.pacotes,
+        `${consumo.caixas} caixas utilizadas; ${consumo.embalagens} embalagens utilizadas.`
+      );
+    }
+  }
+
+  // Finaliza o pedido.
+  state.pedidosSeparar = state.pedidosSeparar.filter(
+    p => p.codigo !== pedido.codigo
+  );
+
+  pedido.status = 'finalizado';
+  pedido.dataFinalizacao = new Date().toLocaleString();
+
+  state.pedidosFinalizados.push(pedido);
+
+  saveData();
+  salvarInsumos();
+
+  registrarHistorico(
+    `Pedido ${pedido.codigo}`,
+    'Pedido Separado',
+    itens.reduce((a, i) => a + i.pacotes, 0),
+    itens.map(i =>
+      `${i.nome}: ${i.pacotes} pacotes (${i.modalidade})`
+    ).join('; ')
+  );
+
+  verificarAlertasInsumos();
+  renderizarInsumos();
+
+  return true;
+}
+
+// Envia o pedido da criação para a lista de pedidos pendentes
+function finalizarPedidoSeparacao() {
+  if (!pedidoAtualEmEdicao) {
+    mostrarToast('❌ Nenhum pedido em edição!', 'error');
+    return;
+  }
+
+  if (Object.keys(pedidoAtualEmEdicao.itens).length === 0) {
+    mostrarToast('❌ Pedido vazio!', 'error');
+    return;
+  }
+
+  if (!confirm(
+    `Enviar pedido ${pedidoAtualEmEdicao.codigo} para a aba Separar?`
+  )) return;
+
+  salvarEstadoParaUndo();
+
+  pedidoAtualEmEdicao.status = 'separar';
+
+  setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
+
+  pedidoAtualEmEdicao = null;
+
+  atualizarPedidoNovo();
+  atualizarListasPedidos();
+
+  mostrarToast('✅ Pedido enviado para Separar!', 'success');
+}
+
+// Atualiza as listas de pedidos
 function atualizarListasPedidos() {
   const ls = document.getElementById('listaPedidosSeparar');
   const lf = document.getElementById('listaPedidosFinalizados');
+
   if (ls) {
     ls.innerHTML = state.pedidosSeparar.map(p => {
-      const tc = Object.values(p.itens).reduce((a, i) => a + i.pacotes, 0);
-      const tv = Object.values(p.itens).reduce((a, i) => a + i.caixas, 0);
-      return `<div class="pedido-card">
-        <div class="pedido-codigo">📋 ${p.codigo}</div>
-        <div class="pedido-itens">${Object.values(p.itens).map(i => {
-        const res = state.carga.filter(c => c.id === i.produtoId && c.pedidoCodigo === p.codigo).reduce((a, c) => a + c.quantidade, 0);
-        const falta = Math.max(0, i.pacotes - res);
-        return `${i.nome}: ${i.pacotes} cx (Reserv: ${res}, Produzir: ${falta})`;
-      }).join('; ') || 'Nenhum item'}</div>
-        <div class="pedido-total-caixas">📦 ${tv} vol(s) | ${tc} caixas</div>
-        <div class="pedido-acoes">
-          <button class="btn btn-sm btn-info" onclick="editarPedido('${p.codigo}')">✏️ Editar</button>
-          <button class="btn btn-sm btn-success" onclick="finalizarPedidoDaLista('${p.codigo}')">✅ Separar</button>
-          <button class="btn btn-sm btn-danger" onclick="excluirPedido('${p.codigo}', 'separar')">🗑️ Excluir</button>
-        </div></div>`;
+      const itens = Object.values(p.itens || {});
+
+      const totalPacotes = itens.reduce(
+        (a, i) => a + i.pacotes, 0
+      );
+
+      const totalCaixas = itens.reduce(
+        (a, i) => a + Math.ceil(i.pacotes / (i.pacotesPorVolume || 50)), 0
+      );
+
+      return `
+        <div class="pedido-card">
+          <div class="pedido-codigo">📋 ${p.codigo}</div>
+
+          <div class="pedido-itens">
+            ${itens.map(i => {
+              const modalidade =
+                i.modalidade === 'retirar'
+                  ? 'Retirada'
+                  : i.modalidade === 'produzir'
+                    ? 'Produção'
+                    : 'Pendente de escolha';
+
+              return `${i.nome}: ${i.pacotes} pacotes (${modalidade})`;
+            }).join('; ') || 'Nenhum item'}
+          </div>
+
+          <div class="pedido-total-caixas">
+            📦 ${totalCaixas} caixas | ${totalPacotes} pacotes
+          </div>
+
+          <div class="pedido-acoes">
+            <button
+              class="btn btn-sm btn-info"
+              onclick="editarPedido('${p.codigo}')"
+            >
+              ✏️ Editar
+            </button>
+
+            <button
+              class="btn btn-sm btn-success"
+              onclick="finalizarPedidoDaLista('${p.codigo}')"
+            >
+              ✅ Separar
+            </button>
+
+            <button
+              class="btn btn-sm btn-danger"
+              onclick="excluirPedido('${p.codigo}', 'separar')"
+            >
+              🗑️ Excluir
+            </button>
+          </div>
+        </div>
+      `;
     }).join('') || '<p style="color:var(--text-muted);">Nenhum pedido pendente.</p>';
   }
+
   if (lf) {
     lf.innerHTML = state.pedidosFinalizados.map(p => {
-      const tc = Object.values(p.itens).reduce((a, i) => a + i.pacotes, 0);
-      const tv = Object.values(p.itens).reduce((a, i) => a + i.caixas, 0);
-      return `<div class="pedido-card">
-        <div class="pedido-codigo">✅ ${p.codigo}</div>
-        <div class="pedido-itens">${Object.values(p.itens).map(i => `${i.nome}: ${i.pacotes} cx`).join('; ') || 'Nenhum item'}</div>
-        <div class="pedido-total-caixas">📦 ${tv} vol(s) | ${tc} caixas</div>
-        <div style="font-size:12px;color:var(--text-muted);">Finalizado: ${p.dataFinalizacao}</div>
-        <div class="pedido-acoes">
-          <button class="btn btn-sm btn-danger" onclick="excluirPedido('${p.codigo}', 'finalizado')">🗑️ Excluir</button>
-        </div></div>`;
+      const itens = Object.values(p.itens || {});
+
+      const totalPacotes = itens.reduce(
+        (a, i) => a + i.pacotes, 0
+      );
+
+      const totalCaixas = itens.reduce(
+        (a, i) => a + Math.ceil(i.pacotes / (i.pacotesPorVolume || 50)), 0
+      );
+
+      return `
+        <div class="pedido-card">
+          <div class="pedido-codigo">✅ ${p.codigo}</div>
+
+          <div class="pedido-itens">
+            ${itens.map(i =>
+              `${i.nome}: ${i.pacotes} pacotes (${i.modalidade})`
+            ).join('; ') || 'Nenhum item'}
+          </div>
+
+          <div class="pedido-total-caixas">
+            📦 ${totalCaixas} caixas | ${totalPacotes} pacotes
+          </div>
+
+          <div style="font-size:12px;color:var(--text-muted);">
+            Finalizado: ${p.dataFinalizacao || '-'}
+          </div>
+
+          <div class="pedido-acoes">
+            <button
+              class="btn btn-sm btn-danger"
+              onclick="excluirPedido('${p.codigo}', 'finalizado')"
+            >
+              🗑️ Excluir
+            </button>
+          </div>
+        </div>
+      `;
     }).join('') || '<p style="color:var(--text-muted);">Nenhum pedido finalizado.</p>';
   }
 }
 
+// Abre pedido para edição
 function editarPedido(codigo) {
-  const p = state.pedidosSeparar.find(x => x.codigo === codigo);
-  if (!p) { mostrarToast('❌ Pedido não encontrado!', 'error'); return; }
-  pedidoAtualEmEdicao = p;
+  const pedido = state.pedidosSeparar.find(p => p.codigo === codigo);
+
+  if (!pedido) {
+    mostrarToast('❌ Pedido não encontrado!', 'error');
+    return;
+  }
+
+  pedidoAtualEmEdicao = pedido;
+
   switchTab('pedidos');
   mostrarSubAba('pedidonovo');
+
   atualizarPedidoNovo();
 }
 
+// Executa a baixa ao clicar em Separar na lista
 function finalizarPedidoDaLista(codigo) {
-  const p = state.pedidosSeparar.find(x => x.codigo === codigo);
-  if (!p) return;
-  if (!confirm(`Finalizar pedido ${codigo}?`)) return;
+  const pedido = state.pedidosSeparar.find(p => p.codigo === codigo);
+
+  if (!pedido) return;
+
+  if (!confirm(
+    `Separar pedido ${codigo}?\n\nAs quantidades selecionadas serão baixadas do estoque.`
+  )) return;
+
   salvarEstadoParaUndo();
-  _finalizarPedido(p);
+
+  const sucesso = _finalizarPedido(pedido);
+
+  if (!sucesso) return;
+
   atualizarListasPedidos();
   carregarPrateleiras();
-  carregarCarga();
   atualizarDashboard();
-  mostrarToast('✅ Separado!', 'success');
+
+  mostrarToast('✅ Pedido separado com sucesso!', 'success');
 }
 
+// Exclui pedido sem alterar a Carga
 function excluirPedido(codigo, tipo) {
   if (!confirm(`Excluir pedido ${codigo}?`)) return;
+
   salvarEstadoParaUndo();
+
   if (tipo === 'separar') {
-    state.carga = state.carga.filter(c => c.pedidoCodigo !== codigo);
-    setData(STORAGE_KEYS.carga, state.carga);
-    state.pedidosSeparar = state.pedidosSeparar.filter(x => x.codigo !== codigo);
+    state.pedidosSeparar = state.pedidosSeparar.filter(
+      p => p.codigo !== codigo
+    );
+
+    if (pedidoAtualEmEdicao?.codigo === codigo) {
+      pedidoAtualEmEdicao = null;
+      atualizarPedidoNovo();
+    }
+
   } else {
-    state.pedidosFinalizados = state.pedidosFinalizados.filter(x => x.codigo !== codigo);
+    state.pedidosFinalizados = state.pedidosFinalizados.filter(
+      p => p.codigo !== codigo
+    );
   }
+
   setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
   setData(STORAGE_KEYS.pedidosFinalizados, state.pedidosFinalizados);
+
   atualizarListasPedidos();
-  carregarPrateleiras();
-  carregarCarga();
-  mostrarToast('🗑️ Excluído!', 'warning');
+
+  mostrarToast('🗑️ Pedido excluído!', 'warning');
 }
+
 
 // ============================================================
 // PEDIDO DE CARGA PERSISTENTE
