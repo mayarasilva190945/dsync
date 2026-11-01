@@ -3884,8 +3884,8 @@ function adicionarItemPedidoSeparacao() {
 
   // Converte pacotes em caixas
   const pacotesPorVolume = produto.pacotesPorVolume || 50;
-  const caixas = qtdPacotes / pacotesPorVolume;
-
+  const caixas = Math.ceil(qtdPacotes / pacotesPorVolume);
+  
   salvarEstadoParaUndo();
 
   // Verifica disponibilidade física em caixas
