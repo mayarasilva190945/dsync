@@ -417,13 +417,13 @@ document.addEventListener('keydown', function (e) {
 // ===== INICIALIZAÇÃO =====
 document.addEventListener('DOMContentLoaded', function () {
   console.log('🚀 Inicializando D.Sync...');
+
   carregarDados();
   carregarInsumos();
   carregarPedidoCarga();
 
-
-  // Tenta recuperar sessão do Supabase
-  if (window.supabase) {
+  // Recupera sessão do Supabase
+  if (window.supabase?.auth) {
     window.supabase.auth.getSession().then(async ({ data, error }) => {
       if (error) {
         console.error('Erro ao recuperar sessão:', error);
@@ -433,19 +433,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
       if (session) {
         usuarioSupabase = session.user;
+
         await carregarTipoUsuario();
 
-        state.usuarioAtual = {
-          id: session.user.id,
-          nome: nomeUsuario,
-          tipo: session.user.email?.toLowerCase() === 'admin@admin.com'
-            ? 'admin'
-            : 'usuario'
-        };
-
         console.log('✅ Sessão restaurada:', session.user.email);
+
         await carregarDaNuvem();
         await carregarPedidoCargaDaNuvem();
+
         entrarApp();
 
       } else {
@@ -455,11 +450,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }).catch((erro) => {
       console.error('Erro ao verificar sessão:', erro);
     });
+
   } else {
     console.error('Supabase ainda não foi carregado.');
   }
 });
-
 
 function carregarDados() {
   state.produtos = getData(STORAGE_KEYS.produtos, []);
@@ -547,7 +542,6 @@ async function registrarLogAcesso(evento) {
 }
 
 
-
 async function fazerLoginSupabase() {
   const email = document.getElementById('loginUsuario').value.trim();
   const senha = document.getElementById('loginSenha').value;
@@ -559,7 +553,7 @@ async function fazerLoginSupabase() {
     return;
   }
 
-  if (!window.supabase || !window.supabase.auth) {
+  if (!window.supabase?.auth) {
     msg.textContent = '❌ Supabase não carregou. Aguarde e tente novamente.';
     msg.style.display = 'block';
     return;
@@ -589,24 +583,10 @@ async function fazerLoginSupabase() {
     await carregarTipoUsuario();
     await registrarLogAcesso('login');
 
-    const nomeUsuario =
-      data.user.user_metadata?.nome ||
-      data.user.user_metadata?.display_name ||
-      data.user.user_metadata?.full_name ||
-      data.user.email;
-
-    state.usuarioAtual = {
-      id: data.user.id,
-      nome: nomeUsuario,
-      tipo: data.user.email?.toLowerCase() === 'admin@admin.com'
-        ? 'admin'
-        : 'usuario'
-    };
     await carregarDaNuvem();
     await carregarPedidoCargaDaNuvem();
+
     entrarApp();
-
-
 
   } catch (err) {
     console.error('Erro no login:', err);
@@ -619,7 +599,6 @@ async function fazerLoginSupabase() {
     }
   }
 }
-
 
 
 async function criarConta() {
