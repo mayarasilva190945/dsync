@@ -20,8 +20,8 @@ const state = {
   pedidoSeparacaoAtual: { codigo: null, itens: {} },
   pedidosSeparar: [],
   pedidosFinalizados: [],
-  limiteBaixo: 5,
-  limiteCritico: 2,
+  limiteBaixo: 40,
+  limiteCritico: 30,
   html5QrCode: null,
   currentPosicaoEdit: null,
   undoStack: [],
@@ -2941,12 +2941,13 @@ function verificarEstoque() {
   if (!container) return;
 
   const baixos = state.produtos.filter(
-    p => p.quantidade > 0 && p.quantidade <= state.limiteBaixo
-  );
+  p => Number(p.quantidade || 0) <= state.limiteBaixo
+);
 
-  const criticos = state.produtos.filter(
-    p => p.quantidade > 0 && p.quantidade <= state.limiteCritico
-  );
+const criticos = state.produtos.filter(
+  p => Number(p.quantidade || 0) <= state.limiteCritico
+);
+
 
   document.getElementById('totalBaixo').textContent = baixos.length;
   document.getElementById('totalCritico').textContent = criticos.length;
