@@ -4609,7 +4609,7 @@ function atualizarListasPedidos() {
       } else if (item.modalidade === 'produzir') {
         detalhes = `
           <div style="margin-top:6px;color:var(--success);">
-            🏭 Produzir ${item.pacotes} pacotes
+            🏭 Produziu ${item.pacotes} pacotes
           </div>
         `;
 
