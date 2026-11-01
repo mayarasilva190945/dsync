@@ -433,16 +433,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
       if (session) {
         usuarioSupabase = session.user;
-
-        const emailAdmin = 'admin@admin.com';
-        const nomeUsuario =
-          session.user.user_metadata?.nome ||
-          session.user.user_metadata?.display_name ||
-          session.user.user_metadata?.full_name ||
-          session.user.email;
-
-        usuarioSupabase = session.user;
         await carregarTipoUsuario();
+
+        state.usuarioAtual = {
+          id: session.user.id,
+          nome: nomeUsuario,
+          tipo: session.user.email?.toLowerCase() === 'admin@admin.com'
+            ? 'admin'
+            : 'usuario'
+        };
 
         console.log('✅ Sessão restaurada:', session.user.email);
         await carregarDaNuvem();
@@ -468,8 +467,8 @@ function carregarDados() {
   state.carga = getData(STORAGE_KEYS.carga, []);
   state.historico = getData(STORAGE_KEYS.historico, []);
   state.usuarios = getData(STORAGE_KEYS.usuarios, []);
-  state.limiteBaixo = getData(STORAGE_KEYS.limiteBaixo, 5);
-  state.limiteCritico = getData(STORAGE_KEYS.limiteCritico, 2);
+  state.limiteBaixo = getData(STORAGE_KEYS.limiteBaixo, 40);
+  state.limiteCritico = getData(STORAGE_KEYS.limiteCritico, 0);
   state.pedidosSeparar = getData(STORAGE_KEYS.pedidosSeparar, []);
   state.pedidosFinalizados = getData(STORAGE_KEYS.pedidosFinalizados, []);
   state.injecao = getData(STORAGE_KEYS.injecao, []);
@@ -2883,13 +2882,13 @@ function atualizarDashboard() {
     (total, p) => total + (p.quantidade || 0), 0
   ));
   const alertasProdutos = produtos.filter(
-  p => p.quantidade > 0 &&
-       p.quantidade <= (state.limiteBaixo || 5)
-).length;
+    p => p.quantidade > 0 &&
+      p.quantidade <= (state.limiteBaixo || 5)
+  ).length;
 
-const alertasInsumos = verificarAlertasInsumos().length;
+  const alertasInsumos = verificarAlertasInsumos().length;
 
-set('dashAlertas', alertasProdutos + alertasInsumos);
+  set('dashAlertas', alertasProdutos + alertasInsumos);
   set('dashInjetados', injetados.reduce(
     (total, item) => total + (item.quantidade || 0), 0
   ).toFixed(0));
@@ -2938,15 +2937,15 @@ function atualizarGrafico() {
 // ===== ALERTAS =====
 function verificarEstoque() {
   const container = document.getElementById('alertasContainer');
-  if (!container) return;
 
-  const baixos = state.produtos.filter(
-  p => Number(p.quantidade || 0) <= state.limiteBaixo
-);
+  const criticos = state.produtos.filter(p =>
+    Number(p.quantidade ?? 0) <= state.limiteCritico
+  );
 
-const criticos = state.produtos.filter(
-  p => Number(p.quantidade || 0) <= state.limiteCritico
-);
+  const baixos = state.produtos.filter(p => {
+    const q = Number(p.quantidade ?? 0);
+    return q > state.limiteCritico && q <= state.limiteBaixo;
+  });
 
 
   document.getElementById('totalBaixo').textContent = baixos.length;
@@ -3016,13 +3015,26 @@ function configurarAlertas() {
 }
 
 function saveConfig() {
-  state.limiteBaixo = parseInt(document.getElementById('limiteBaixo').value) || 5;
-  state.limiteCritico = parseInt(document.getElementById('limiteCritico').value) || 2;
-  localStorage.setItem(STORAGE_KEYS.limiteBaixo, state.limiteBaixo);
-  localStorage.setItem(STORAGE_KEYS.limiteCritico, state.limiteCritico);
+  const baixo = Number(document.getElementById('limiteBaixo').value);
+  const critico = Number(document.getElementById('limiteCritico').value);
+
+  if (!Number.isFinite(baixo) || !Number.isFinite(critico)) {
+    mostrarToast('❌ Informe limites válidos!', 'error');
+    return;
+  }
+
+  state.limiteBaixo = baixo;
+  state.limiteCritico = critico;
+
+  localStorage.setItem(STORAGE_KEYS.limiteBaixo, baixo);
+  localStorage.setItem(STORAGE_KEYS.limiteCritico, critico);
+
   document.getElementById('modalConfig').style.display = 'none';
+
   verificarEstoque();
-  mostrarToast('✅ Salvo!', 'success');
+  atualizarDashboard();
+
+  mostrarToast('✅ Configurações salvas!', 'success');
 }
 
 function closeModalConfig() { document.getElementById('modalConfig').style.display = 'none'; }
@@ -3919,7 +3931,7 @@ function novoPedido() {
   }
 
   if (state.pedidosSeparar.some(p => p.codigo === codigo) ||
-      state.pedidosFinalizados.some(p => p.codigo === codigo)) {
+    state.pedidosFinalizados.some(p => p.codigo === codigo)) {
     mostrarToast('❌ Já existe um pedido com esse código!', 'error');
     return;
   }
@@ -4234,8 +4246,8 @@ function atualizarPedidoNovo() {
 
           <div style="color:${totalRetirada === caixas ? 'var(--success)' : 'var(--danger)'};">
             ${totalRetirada === caixas
-              ? '✅ Quantidade completa'
-              : `Faltam ${Math.max(0, caixas - totalRetirada)} caixas`}
+          ? '✅ Quantidade completa'
+          : `Faltam ${Math.max(0, caixas - totalRetirada)} caixas`}
           </div>
         </div>
       `;
@@ -5140,31 +5152,31 @@ function registrarProducaoCarga(produtoId) {
   mostrarToast(`✅ ${q} caixas produzidas! Insumos descontados.`, 'success');
 }
 
-  function editarQuantidadeCarga(produtoId) {
-    const item = state.pedidoCargaAtual.itens[produtoId];
-    if (!item) return;
-    const reservado = getReservadoCargaAtual(produtoId);
-    const produzido = item.quantidadeProduzida || 0;
-    const minPedida = reservado + produzido;
-    const resp = prompt(
-      `✏️ Editar quantidade de "${item.nome}"\n\n` +
-      `Pedida atual: ${item.quantidadePedida} cx\n` +
-      `Já reservado: ${reservado} cx\n` +
-      `Já produzido: ${produzido} cx\n\n` +
-      `Nova quantidade pedida (mínimo ${minPedida}):`,
-      item.quantidadePedida
-    );
-    if (resp === null) return;
-    const q = parseInt(resp);
-    if (isNaN(q) || q < minPedida) {
-      mostrarToast(`❌ Valor inválido! Mínimo: ${minPedida}`, 'error'); return;
-    }
-    salvarEstadoParaUndo();
-    item.quantidadePedida = q;
-    salvarPedidoCarga();
-    atualizarPedidoCarga();
-    mostrarToast('✅ Quantidade atualizada!', 'success');
+function editarQuantidadeCarga(produtoId) {
+  const item = state.pedidoCargaAtual.itens[produtoId];
+  if (!item) return;
+  const reservado = getReservadoCargaAtual(produtoId);
+  const produzido = item.quantidadeProduzida || 0;
+  const minPedida = reservado + produzido;
+  const resp = prompt(
+    `✏️ Editar quantidade de "${item.nome}"\n\n` +
+    `Pedida atual: ${item.quantidadePedida} cx\n` +
+    `Já reservado: ${reservado} cx\n` +
+    `Já produzido: ${produzido} cx\n\n` +
+    `Nova quantidade pedida (mínimo ${minPedida}):`,
+    item.quantidadePedida
+  );
+  if (resp === null) return;
+  const q = parseInt(resp);
+  if (isNaN(q) || q < minPedida) {
+    mostrarToast(`❌ Valor inválido! Mínimo: ${minPedida}`, 'error'); return;
   }
+  salvarEstadoParaUndo();
+  item.quantidadePedida = q;
+  salvarPedidoCarga();
+  atualizarPedidoCarga();
+  mostrarToast('✅ Quantidade atualizada!', 'success');
+}
 
 function finalizarPedidoCargaCompleto() {
   if (!state.pedidoCargaAtual.ativo) { mostrarToast('❌ Nenhum pedido de carga ativo!', 'error'); return; }
@@ -5281,6 +5293,7 @@ function atualizarTudo() {
   carregarCarga();
   carregarHistorico();
   atualizarDashboard();
+  verificarEstoque();
   atualizarSelects();
   atualizarGrafico();
   renderizarInsumos();
@@ -5926,80 +5939,62 @@ function abrirScannerParaCampo(campoId) {
 // EVENTOS GLOBAIS E HOOKS
 // ============================================================
 document.addEventListener('DOMContentLoaded', function () {
-  setTimeout(() => {
-    if (typeof injetarBotoesPDF === 'function') {
-      injetarBotoesPDF();
-    }
-  }, 500);
-
-  const inputLeitor = document.getElementById('codigoLido');
-  if (inputLeitor) {
-    inputLeitor.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); adicionarCodigoLido(); }
-    });
-  }
-
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', async () => {
       try {
-        const registrations =
-          await navigator.serviceWorker.getRegistrations();
-
-        for (const registration of registrations) {
-          if (registration.scope.includes('/DSYNC/')) {
-            await registration.unregister();
-          }
-        }
-
         const registration =
-          await navigator.serviceWorker.register(
-            './sw.js',
-            { scope: './' }
-          );
+          await navigator.serviceWorker.register('./sw.js', {
+            scope: './'
+          });
 
-        console.log('Service Worker registrado:', registration.scope);
+        console.log(
+          'Service Worker registrado:',
+          registration.scope
+        );
+
       } catch (error) {
         console.error('Erro no Service Worker:', error);
       }
     });
   }
+}
 
 
   const inputManualPrat = document.getElementById('scannerPrateleiraInput');
-  if (inputManualPrat) {
-    inputManualPrat.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); confirmarScannerPrateleiraManual(); }
-    });
-  }
+if (inputManualPrat) {
+  inputManualPrat.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); confirmarScannerPrateleiraManual(); }
+  });
+}
 
-  const inputManualProd = document.getElementById('scannerProdutoInput');
-  if (inputManualProd) {
-    inputManualProd.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); confirmarScannerProdutoManual(); }
-    });
-  }
+const inputManualProd = document.getElementById('scannerProdutoInput');
+if (inputManualProd) {
+  inputManualProd.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); confirmarScannerProdutoManual(); }
+  });
+}
 
-  const inputMovProd = document.getElementById('movProdutoInput');
-  if (inputMovProd) {
-    inputMovProd.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); identificarProdutoMovimentacao(); }
-    });
-  }
+const inputMovProd = document.getElementById('movProdutoInput');
+if (inputMovProd) {
+  inputMovProd.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); identificarProdutoMovimentacao(); }
+  });
+}
 
-  const inputAddProd = document.getElementById('addCodigoProdutoInput');
-  if (inputAddProd) {
-    inputAddProd.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); buscarProdutoPorCodigo(); }
-    });
-  }
+const inputAddProd = document.getElementById('addCodigoProdutoInput');
+if (inputAddProd) {
+  inputAddProd.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); buscarProdutoPorCodigo(); }
+  });
+}
 
-  setInterval(() => {
-    const fab = document.getElementById('fabScanner');
-    const app = document.getElementById('appContent');
-    if (!fab || !app) return;
-    const appVisivel = app.style.display !== 'none';
-    fab.style.display = appVisivel ? 'flex' : 'none';
-  }, 500);
+setInterval(() => {
+  const fab = document.getElementById('fabScanner');
+  const app = document.getElementById('appContent');
+  if (!fab || !app) return;
+  const appVisivel = app.style.display !== 'none';
+  fab.style.display = appVisivel ? 'flex' : 'none';
+}, 500);
 });
 
 const _atualizarListasPedidosOriginal = typeof atualizarListasPedidos === 'function' ? atualizarListasPedidos : null;
