@@ -3885,7 +3885,7 @@ function adicionarItemPedidoSeparacao() {
   // Converte pacotes em caixas
   const pacotesPorVolume = produto.pacotesPorVolume || 50;
   const caixas = Math.ceil(qtdPacotes / pacotesPorVolume);
-  
+
   salvarEstadoParaUndo();
 
   // Verifica disponibilidade física em caixas
@@ -4016,6 +4016,7 @@ function finalizarPedidoSeparacao() {
 }
 
 
+
 function atualizarPedidoNovo() {
   const c = document.getElementById('pedidoNovoItens');
   if (!c) return;
@@ -4027,11 +4028,16 @@ function atualizarPedidoNovo() {
 
   const itens = pedidoAtualEmEdicao.itens;
 
-  // Calcula os totais do pedido
   let totalPacotes = 0;
   let totalCaixas = 0;
 
   const itensHtml = Object.values(itens).map(item => {
+
+    const pacotesPorVolume = item.pacotesPorVolume || 50;
+
+    // Caixas arredondadas para cima e sobra de pacotes
+    const caixas = Math.ceil(item.pacotes / pacotesPorVolume);
+    const sobra = item.pacotes % pacotesPorVolume;
 
     // Quantidade reservada em caixas
     const res = state.carga
@@ -4039,14 +4045,13 @@ function atualizarPedidoNovo() {
       .reduce((a, c) => a + c.quantidade, 0);
 
     // Conversão das caixas reservadas em pacotes
-    const pacotesPorVolume = item.pacotesPorVolume || 50;
     const pacotesReservados = res * pacotesPorVolume;
 
     // Quantidade de pacotes que ainda precisam ser produzidos
     const falta = Math.max(0, item.pacotes - pacotesReservados);
 
     totalPacotes += item.pacotes;
-    totalCaixas += item.caixas;
+    totalCaixas += caixas;
 
     // Locais de armazenamento reservados
     const locais = state.carga
@@ -4060,7 +4065,7 @@ function atualizarPedidoNovo() {
           <strong>${item.nome}</strong> (${item.codigoInterno || 'sem código'})<br>
 
           <small style="color:var(--text-muted);">
-            Pedido: ${item.pacotes} pacotes (${item.caixas.toFixed(2)} cx)<br>
+            ${item.encontrado === false ? '❌' : '✅'} ${item.codigoInterno || item.nome}: ${item.pacotes} pacotes → ${caixas} caixas${sobra > 0 ? ` + ${sobra} pacotes` : ''}<br>
             Reservado: ${res} cx (${pacotesReservados} pacotes)<br>
             Produzir: ${falta} pacotes<br>
             Locais: ${locais || 'nenhum'}
@@ -4083,7 +4088,7 @@ function atualizarPedidoNovo() {
       </div>
 
       <div style="text-align:center;">
-        <div style="font-size:24px; font-weight:800; color:var(--accent);">${totalCaixas.toFixed(2)}</div>
+        <div style="font-size:24px; font-weight:800; color:var(--accent);">${Math.ceil(totalCaixas)}</div>
         <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Total Caixas</div>
       </div>
 
@@ -4107,6 +4112,7 @@ function atualizarPedidoNovo() {
     </div>
   `;
 }
+
 
 
 function atualizarListasPedidos() {
