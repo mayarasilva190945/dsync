@@ -4561,10 +4561,95 @@ function finalizarPedidoSeparacao() {
 }
 
 // Atualiza as listas de pedidos
+
 function atualizarListasPedidos() {
   const ls = document.getElementById('listaPedidosSeparar');
   const lf = document.getElementById('listaPedidosFinalizados');
 
+  function renderizarItens(pedido) {
+    const itens = Object.values(pedido.itens || {});
+
+    return itens.map(item => {
+      let detalhes = '';
+
+      if (item.modalidade === 'retirar') {
+        const retiradas = item.retiradas || [];
+
+        const locais = retiradas.map(r => {
+          const prateleira = state.prateleiras.find(
+            p => p.id === r.prateleiraId
+          );
+
+          const nomePrateleira = prateleira
+            ? prateleira.nome || prateleira.id
+            : r.prateleiraId;
+
+          return `
+            <div style="
+              padding:4px 0;
+              color:var(--text-muted);
+              font-size:13px;
+            ">
+              📍 Prateleira: <strong>${nomePrateleira}</strong>
+              | Posição: <strong>${r.posicao}</strong>
+              | Quantidade: <strong>${r.quantidade} caixas</strong>
+            </div>
+          `;
+        }).join('');
+
+        detalhes = `
+          <div style="margin-top:6px;">
+            <strong style="color:var(--info);">
+              📦 Retirada da prateleira
+            </strong>
+            ${locais}
+          </div>
+        `;
+
+      } else if (item.modalidade === 'produzir') {
+        detalhes = `
+          <div style="margin-top:6px;color:var(--success);">
+            🏭 Produzir ${item.pacotes} pacotes
+          </div>
+        `;
+
+      } else {
+        detalhes = `
+          <div style="margin-top:6px;color:var(--danger);">
+            ⚠️ Modalidade não definida
+          </div>
+        `;
+      }
+
+      const caixas = Math.ceil(
+        item.pacotes / (item.pacotesPorVolume || 50)
+      );
+
+      return `
+        <div style="
+          padding:10px;
+          margin-bottom:8px;
+          border-bottom:1px solid var(--border);
+        ">
+          <div>
+            <strong>${item.nome}</strong>
+            <br>
+            <small style="color:var(--text-muted);">
+              Código: ${item.codigoInterno || 'Sem código'}
+            </small>
+          </div>
+
+          <div style="margin-top:5px;">
+            ${item.pacotes} pacotes | ${caixas} caixas
+          </div>
+
+          ${detalhes}
+        </div>
+      `;
+    }).join('');
+  }
+
+  // PEDIDOS PENDENTES
   if (ls) {
     ls.innerHTML = state.pedidosSeparar.map(p => {
       const itens = Object.values(p.itens || {});
@@ -4574,24 +4659,19 @@ function atualizarListasPedidos() {
       );
 
       const totalCaixas = itens.reduce(
-        (a, i) => a + Math.ceil(i.pacotes / (i.pacotesPorVolume || 50)), 0
+        (a, i) => a + Math.ceil(
+          i.pacotes / (i.pacotesPorVolume || 50)
+        ), 0
       );
 
       return `
         <div class="pedido-card">
-          <div class="pedido-codigo">📋 ${p.codigo}</div>
+          <div class="pedido-codigo">
+            📋 Pedido: ${p.codigo}
+          </div>
 
-          <div class="pedido-itens">
-            ${itens.map(i => {
-              const modalidade =
-                i.modalidade === 'retirar'
-                  ? 'Retirada'
-                  : i.modalidade === 'produzir'
-                    ? 'Produção'
-                    : 'Pendente de escolha';
-
-              return `${i.nome}: ${i.pacotes} pacotes (${modalidade})`;
-            }).join('; ') || 'Nenhum item'}
+          <div class="pedido-itens" style="margin-top:10px;">
+            ${renderizarItens(p) || 'Nenhum item'}
           </div>
 
           <div class="pedido-total-caixas">
@@ -4625,6 +4705,7 @@ function atualizarListasPedidos() {
     }).join('') || '<p style="color:var(--text-muted);">Nenhum pedido pendente.</p>';
   }
 
+  // PEDIDOS FINALIZADOS
   if (lf) {
     lf.innerHTML = state.pedidosFinalizados.map(p => {
       const itens = Object.values(p.itens || {});
@@ -4634,17 +4715,19 @@ function atualizarListasPedidos() {
       );
 
       const totalCaixas = itens.reduce(
-        (a, i) => a + Math.ceil(i.pacotes / (i.pacotesPorVolume || 50)), 0
+        (a, i) => a + Math.ceil(
+          i.pacotes / (i.pacotesPorVolume || 50)
+        ), 0
       );
 
       return `
         <div class="pedido-card">
-          <div class="pedido-codigo">✅ ${p.codigo}</div>
+          <div class="pedido-codigo">
+            ✅ Pedido: ${p.codigo}
+          </div>
 
-          <div class="pedido-itens">
-            ${itens.map(i =>
-              `${i.nome}: ${i.pacotes} pacotes (${i.modalidade})`
-            ).join('; ') || 'Nenhum item'}
+          <div class="pedido-itens" style="margin-top:10px;">
+            ${renderizarItens(p) || 'Nenhum item'}
           </div>
 
           <div class="pedido-total-caixas">
@@ -4668,6 +4751,7 @@ function atualizarListasPedidos() {
     }).join('') || '<p style="color:var(--text-muted);">Nenhum pedido finalizado.</p>';
   }
 }
+
 
 // Abre pedido para edição
 function editarPedido(codigo) {
