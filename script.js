@@ -3865,6 +3865,7 @@ function novoPedido() {
 }
 
 
+
 function adicionarItemPedidoSeparacao() {
   if (!pedidoAtualEmEdicao) {
     mostrarToast('❌ Crie um pedido primeiro!', 'error');
@@ -3882,44 +3883,13 @@ function adicionarItemPedidoSeparacao() {
   const produto = state.produtos.find(p => p.id === pid);
   if (!produto) return;
 
-  // Converte pacotes em caixas
   const pacotesPorVolume = produto.pacotesPorVolume || 50;
   const caixas = Math.ceil(qtdPacotes / pacotesPorVolume);
 
   salvarEstadoParaUndo();
 
-  // Verifica disponibilidade física em caixas
+  // Consulta disponibilidade sem reservar estoque
   const disp = buscarDisponibilidadeProduto(pid);
-  let restoCaixas = Math.ceil(caixas);
-  const reservas = [];
-
-  disp.locais.forEach(l => {
-    if (restoCaixas <= 0) return;
-
-    const qr = Math.min(restoCaixas, l.disponivel);
-
-    if (qr > 0) {
-      reservas.push({
-        prateleiraId: l.prateleiraId,
-        posicao: l.posicao,
-        quantidade: qr
-      });
-
-      restoCaixas -= qr;
-    }
-  });
-
-  // Registra as reservas na carga
-  reservas.forEach(r => {
-    state.carga.push({
-      uid: 'c_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-      id: pid,
-      quantidade: r.quantidade,
-      prateleira: r.prateleiraId,
-      posicao: r.posicao,
-      pedidoCodigo: pedidoAtualEmEdicao.codigo
-    });
-  });
 
   // Adiciona ou atualiza o item do pedido
   if (!pedidoAtualEmEdicao.itens[pid]) {
@@ -3936,22 +3906,24 @@ function adicionarItemPedidoSeparacao() {
   pedidoAtualEmEdicao.itens[pid].pacotes += qtdPacotes;
   pedidoAtualEmEdicao.itens[pid].caixas += caixas;
 
-  // Mantém a lógica de salvamento existente
-  setData(STORAGE_KEYS.carga, state.carga);
+  // Salva somente o pedido, sem alterar a carga
   setData(STORAGE_KEYS.pedidosSeparar, state.pedidosSeparar);
 
-  // Atualiza a interface
   atualizarPedidoNovo();
-  carregarPrateleiras();
-  carregarCarga();
-  atualizarDashboard();
 
-  if (restoCaixas > 0) {
-    mostrarToast(`⚠️ Adicionado! Faltam ${restoCaixas} caixas no estoque.`, 'warning');
+  if (disp.totalDisponivel < caixas) {
+    mostrarToast(
+      `⚠️ Pedido adicionado! Estoque disponível: ${disp.totalDisponivel} cx. Necessárias: ${caixas} cx.`,
+      'warning'
+    );
   } else {
-    mostrarToast(`✅ ${qtdPacotes} pacotes (${caixas.toFixed(2)} cx) adicionados!`, 'success');
+    mostrarToast(
+      `✅ ${qtdPacotes} pacotes (${caixas} caixas) adicionados!`,
+      'success'
+    );
   }
 }
+
 
 
 function removerItemPedidoSeparacao(produtoId) {
@@ -4017,6 +3989,7 @@ function finalizarPedidoSeparacao() {
 
 
 
+
 function atualizarPedidoNovo() {
   const c = document.getElementById('pedidoNovoItens');
   if (!c) return;
@@ -4035,29 +4008,18 @@ function atualizarPedidoNovo() {
 
     const pacotesPorVolume = item.pacotesPorVolume || 50;
 
-    // Caixas arredondadas para cima e sobra de pacotes
     const caixas = Math.ceil(item.pacotes / pacotesPorVolume);
     const sobra = item.pacotes % pacotesPorVolume;
 
-    // Quantidade reservada em caixas
-    const res = state.carga
-      .filter(c => c.id === item.produtoId && c.pedidoCodigo === pedidoAtualEmEdicao.codigo)
-      .reduce((a, c) => a + c.quantidade, 0);
+    // Consulta os locais disponíveis, sem efetuar reservas
+    const disp = buscarDisponibilidadeProduto(item.produtoId);
 
-    // Conversão das caixas reservadas em pacotes
-    const pacotesReservados = res * pacotesPorVolume;
-
-    // Quantidade de pacotes que ainda precisam ser produzidos
-    const falta = Math.max(0, item.pacotes - pacotesReservados);
+    const locais = disp.locais.map(l =>
+      `${l.prateleiraNome || l.prateleiraId}${l.posicao}: ${l.disponivel} cx disponíveis`
+    ).join('<br>');
 
     totalPacotes += item.pacotes;
     totalCaixas += caixas;
-
-    // Locais de armazenamento reservados
-    const locais = state.carga
-      .filter(c => c.id === item.produtoId && c.pedidoCodigo === pedidoAtualEmEdicao.codigo)
-      .map(c => `${c.prateleira}${c.posicao}`)
-      .join(', ');
 
     return `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid var(--border); color:var(--text);">
@@ -4065,10 +4027,11 @@ function atualizarPedidoNovo() {
           <strong>${item.nome}</strong> (${item.codigoInterno || 'sem código'})<br>
 
           <small style="color:var(--text-muted);">
-            ${item.encontrado === false ? '❌' : '✅'} ${item.codigoInterno || item.nome}: ${item.pacotes} pacotes → ${caixas} caixas${sobra > 0 ? ` + ${sobra} pacotes` : ''}<br>
-            Reservado: ${res} cx (${pacotesReservados} pacotes)<br>
-            Produzir: ${falta} pacotes<br>
-            Locais: ${locais || 'nenhum'}
+            ${item.codigoInterno ? '✅' : '❌'} ${item.codigoInterno || item.nome}: ${item.pacotes} pacotes → ${caixas} caixas${sobra > 0 ? ` + ${sobra} pacotes` : ''}<br>
+            Estoque disponível: ${disp.totalDisponivel} cx<br>
+            Locais disponíveis:<br>
+            ${locais || 'Nenhum local disponível'}<br>
+            Necessário produzir: ${Math.max(0, caixas - disp.totalDisponivel)} caixas
           </small>
         </div>
 
@@ -4088,7 +4051,7 @@ function atualizarPedidoNovo() {
       </div>
 
       <div style="text-align:center;">
-        <div style="font-size:24px; font-weight:800; color:var(--accent);">${Math.ceil(totalCaixas)}</div>
+        <div style="font-size:24px; font-weight:800; color:var(--accent);">${totalCaixas}</div>
         <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Total Caixas</div>
       </div>
 
@@ -4112,6 +4075,7 @@ function atualizarPedidoNovo() {
     </div>
   `;
 }
+
 
 
 
@@ -4544,7 +4508,7 @@ function buscarDisponibilidadeProduto(produtoId) {
     pr.produtos.forEach(pos => {
       if (pos.id === produtoId && pos.quantidade > 0) {
         const res = state.carga
-          .filter(c => c.id === produtoId && c.prateleira === pr.id && c.posicao === pos.posicao && !c.pedidoCodigo)
+          .filter(c => c.id === produtoId && c.prateleira === pr.id && c.posicao === pos.posicao)
           .reduce((a, c) => a + c.quantidade, 0);
         const disp = pos.quantidade - res;
         if (disp > 0) {
