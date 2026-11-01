@@ -304,42 +304,32 @@
                         📊 Resumo do Estoque
                     </h2>
                     <div class="dashboard-stats">
-                        <div class="dash-card">
+                        <div class="dash-card" onclick="switchTab('estoque'); mostrarSubAba('cadastro');">
                             <div class="dash-icon">📦</div>
                             <div class="dash-number" id="dashTotalProdutos">0</div>
                             <div class="dash-label">Total de Produtos</div>
                         </div>
-                        <div class="dash-card">
-                            <div class="dash-icon">🏷️</div>
-                            <div class="dash-number" id="dashProdutosBanco">0</div>
-                            <div class="dash-label">No Banco de Dados</div>
-                        </div>
-                        <div class="dash-card">
+                        <div class="dash-card" onclick="switchTab('estoque'); mostrarSubAba('prateleiras');">
                             <div class="dash-icon">📍</div>
                             <div class="dash-number" id="dashProdutosPrateleira">0</div>
                             <div class="dash-label">Nas Prateleiras</div>
                         </div>
-                        <div class="dash-card">
+                        <div class="dash-card" onclick="switchTab('pedidos'); mostrarSubAba('carga');">
                             <div class="dash-icon">🚛</div>
                             <div class="dash-number" id="dashProdutosCarga">0</div>
                             <div class="dash-label">Na Carga</div>
                         </div>
-                        <div class="dash-card">
+                        <div class="dash-card" onclick="switchTab('estoque'); mostrarSubAba('insumos');">
                             <div class="dash-icon">📦</div>
                             <div class="dash-number" id="dashCaixasPapelao">0</div>
                             <div class="dash-label">Caixas de Papelão</div>
                         </div>
-                        <div class="dash-card">
-                            <div class="dash-icon">⬜</div>
-                            <div class="dash-number" id="dashEmbalagens">0</div>
-                            <div class="dash-label">Embalagens</div>
-                        </div>
-                        <div class="dash-card">
+                        <div class="dash-card" onclick="switchTab('estoque'); mostrarSubAba('alertas');">
                             <div class="dash-icon">⚠️</div>
                             <div class="dash-number" id="dashAlertas">0</div>
                             <div class="dash-label">Alertas</div>
                         </div>
-                        <div class="dash-card">
+                        <div class="dash-card" onclick="switchTab('injecao'); mostrarSubAba('injecao');">
                             <div class="dash-icon">💉</div>
                             <div class="dash-number" id="dashInjetados">0</div>
                             <div class="dash-label">Caixas Injetadas</div>
@@ -694,7 +684,7 @@
                                 </p>
                             </div>
 
-                            <div id="leitorPedidoNovo">
+                            <div id="leitorPedidoNovo" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
                                 <div class="leitor-container">
                                     <h2 style="color: #1a2b4c; margin-bottom: 20px">
                                         📷 Leitor de Pedidos

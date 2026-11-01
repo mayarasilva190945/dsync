@@ -2882,9 +2882,14 @@ function atualizarDashboard() {
   set('dashTotalUnidades', produtos.reduce(
     (total, p) => total + (p.quantidade || 0), 0
   ));
-  set('dashAlertas', produtos.filter(
-    p => p.quantidade > 0 && p.quantidade <= (state.limiteCritico || 0)
-  ).length);
+  const alertasProdutos = produtos.filter(
+  p => p.quantidade > 0 &&
+       p.quantidade <= (state.limiteBaixo || 5)
+).length;
+
+const alertasInsumos = verificarAlertasInsumos().length;
+
+set('dashAlertas', alertasProdutos + alertasInsumos);
   set('dashInjetados', injetados.reduce(
     (total, item) => total + (item.quantidade || 0), 0
   ).toFixed(0));
@@ -2933,20 +2938,74 @@ function atualizarGrafico() {
 // ===== ALERTAS =====
 function verificarEstoque() {
   const container = document.getElementById('alertasContainer');
-  const baixos = state.produtos.filter(p => p.quantidade > 0 && p.quantidade <= state.limiteBaixo);
-  const criticos = state.produtos.filter(p => p.quantidade > 0 && p.quantidade <= state.limiteCritico);
+  if (!container) return;
+
+  const baixos = state.produtos.filter(
+    p => p.quantidade > 0 && p.quantidade <= state.limiteBaixo
+  );
+
+  const criticos = state.produtos.filter(
+    p => p.quantidade > 0 && p.quantidade <= state.limiteCritico
+  );
+
   document.getElementById('totalBaixo').textContent = baixos.length;
   document.getElementById('totalCritico').textContent = criticos.length;
-  if (criticos.length === 0 && baixos.length === 0) {
-    container.innerHTML = '<p class="alert-box-success">✅ Estoque adequado!</p>';
-    document.getElementById('alertBanner').classList.remove('active');
-    return;
+
+  let html = '';
+
+  // PRODUTOS CRÍTICOS
+  criticos.forEach(p => {
+    html += `
+      <div class="alert-box alert-box-danger"
+        onclick="switchTab('estoque'); mostrarSubAba('prateleiras');"
+        style="cursor:pointer;">
+        <strong>${escapeHTML(p.nome)}</strong>
+        - ${p.quantidade} cx (CRÍTICO)
+        <span style="float:right;">Ver →</span>
+      </div>`;
+  });
+
+  // PRODUTOS COM ESTOQUE BAIXO
+  baixos.filter(p => p.quantidade > state.limiteCritico)
+    .forEach(p => {
+      html += `
+        <div class="alert-box alert-box-warning"
+          onclick="switchTab('estoque'); mostrarSubAba('prateleiras');"
+          style="cursor:pointer;">
+          <strong>${escapeHTML(p.nome)}</strong>
+          - ${p.quantidade} cx (BAIXO)
+          <span style="float:right;">Ver →</span>
+        </div>`;
+    });
+
+  // INSUMOS
+  const alertasInsumos = verificarAlertasInsumos();
+
+  alertasInsumos.forEach(alerta => {
+    html += `
+      <div class="alert-box alert-box-danger"
+        onclick="switchTab('estoque'); mostrarSubAba('insumos');"
+        style="cursor:pointer;">
+        <strong>${escapeHTML(alerta)}</strong>
+        <span style="float:right;">Ver →</span>
+      </div>`;
+  });
+
+  container.innerHTML = html || `
+    <p class="alert-box-success">
+      ✅ Estoque adequado! Nenhum alerta encontrado.
+    </p>
+  `;
+
+  // Banner de produtos no Dashboard
+  const banner = document.getElementById('alertBanner');
+
+  if (banner) {
+    banner.classList.toggle(
+      'active',
+      baixos.length > 0 || alertasInsumos.length > 0
+    );
   }
-  let h = '';
-  criticos.forEach(p => h += `<div class="alert-box alert-box-danger"><strong>${p.nome}</strong> - ${p.quantidade} cx (CRÍTICO)</div>`);
-  baixos.filter(p => p.quantidade > state.limiteCritico).forEach(p => h += `<div class="alert-box alert-box-warning"><strong>${p.nome}</strong> - ${p.quantidade} cx (BAIXO)</div>`);
-  container.innerHTML = h;
-  document.getElementById('alertBanner').classList.add('active');
 }
 
 function configurarAlertas() {
