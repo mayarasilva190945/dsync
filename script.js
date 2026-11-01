@@ -21,7 +21,7 @@ const state = {
   pedidosSeparar: [],
   pedidosFinalizados: [],
   limiteBaixo: 40,
-  limiteCritico: 30,
+  limiteCritico: 0,
   html5QrCode: null,
   currentPosicaoEdit: null,
   undoStack: [],
