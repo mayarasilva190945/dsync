@@ -5957,8 +5957,6 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
   }
-}
-
 
   const inputManualPrat = document.getElementById('scannerPrateleiraInput');
 if (inputManualPrat) {
