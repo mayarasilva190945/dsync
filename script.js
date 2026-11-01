@@ -3930,7 +3930,7 @@ function adicionarItemPedidoSeparacao() {
   const item = pedidoAtualEmEdicao.itens[pid];
 
   item.pacotes += qtdPacotes;
-  item.caixas = Math.ceil(item.pacotes / pacotesPorVolume);
+  item.caixas = Math.floor(item.pacotes / pacotesPorVolume);
 
   // Se a quantidade mudar, exige nova conferência da modalidade.
   item.modalidade = '';
