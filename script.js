@@ -1421,17 +1421,12 @@ function renderPrateleira(shelf) {
         <div>
           <h2 class="shelf-title">📦 ${shelf.nome} <span class="shelf-title-code">(${codigoPrateleira})</span></h2>
         </div>
-        <div class="shelf-qr-wrapper">
-          <div id="${qrId}" class="shelf-qr"></div>
-          <div class="shelf-qr-label">${codigoPrateleira}</div>
-        </div>
       </div>
       <div class="shelf-actions">
         <button class="btn btn-sm btn-green" onclick="adicionarPosicaoPrateleira('${shelf.id}')">➕ Posição</button>
         <button class="btn btn-sm btn-orange" onclick="removerPosicaoPrateleira('${shelf.id}')">➖ Posição</button>
         <button class="btn btn-sm btn-yellow" onclick="editarCorPrateleira('${shelf.id}')">🎨</button>
         <button class="btn btn-sm btn-info" onclick="editarNomePrateleira('${shelf.id}')">✏️</button>
-        <button class="btn btn-sm btn-info" onclick="imprimirQRCodePrateleira('${shelf.id}')">🖨️ QR</button>
         <button class="btn btn-sm btn-danger" onclick="removerPrateleira('${shelf.id}')">🗑️</button>
       </div>
     </div>
@@ -3386,6 +3381,14 @@ function importarDados() {
     console.error(e);
     mostrarToast(`❌ Erro: ${e.message}`, 'error');
   }
+}
+
+function abrirMenuDados() {
+    document.getElementById('modalMenuDados').style.display = 'flex';
+}
+
+function fecharMenuDados() {
+    document.getElementById('modalMenuDados').style.display = 'none';
 }
 
 function exportarExcel() {

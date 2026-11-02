@@ -434,24 +434,12 @@
                             <button class="info" onclick="imprimirEtiquetas()">
                                 🖨️ Imprimir Etiquetas
                             </button>
-                            <button class="info" onclick="imprimirTodosQRCodes()">
-                                📱 QR Codes (Todas)
-                            </button>
-                            <button onclick="resetAll()">🔄 Resetar</button>
-                            <button class="info" onclick="abrirExportar()">
-                                📥 Exportar Dados
-                            </button>
-                            <button class="warning" onclick="abrirImportar()">
-                                📤 Importar Dados
-                            </button>
-                            <button class="warning" onclick="verificarEstoque()">
-                                🔍 Verificar
+
+                            <button class="info" onclick="abrirMenuDados()">
+                                📤 Importar / Exportar Dados
                             </button>
                             <button class="danger" onclick="limparEstoqueCompleto()">
                                 🧹 Limpar Estoque
-                            </button>
-                            <button class="warning" onclick="limparEstoqueBaixo()">
-                                ⚠️ Limpar Estoque Baixo
                             </button>
                         </div>
                         <div id="shelvesContainer">
@@ -639,7 +627,7 @@
                         <button class="sub-tab" data-subaba="finalizado" onclick="mostrarSubAba('finalizado')">
                             ✅ Finalizado
                         </button>
-   
+
                         <button class="sub-tab" data-subaba="carga" onclick="mostrarSubAba('carga')">
                             🚛 Carga
                         </button>
@@ -679,7 +667,8 @@
                                 </p>
                             </div>
 
-                            <div id="leitorPedidoNovo" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
+                            <div id="leitorPedidoNovo"
+                                style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
                                 <div class="leitor-container">
                                     <h2 style="color: #1a2b4c; margin-bottom: 20px">
                                         📷 Leitor de Pedidos
@@ -1586,6 +1575,24 @@
                         ❌ Fechar
                     </button>
                 </div>
+            </div>
+        </div>
+        <div id="modalMenuDados" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:350px; text-align:center;">
+                <h3>📁 Gerenciar Dados</h3>
+
+                <button class="info" onclick="fecharMenuDados(); abrirExportar();" style="width:100%; margin:10px 0;">
+                    📥 Exportar Dados
+                </button>
+
+                <button class="warning" onclick="fecharMenuDados(); abrirImportar();"
+                    style="width:100%; margin:10px 0;">
+                    📤 Importar Dados
+                </button>
+
+                <button class="secondary" onclick="fecharMenuDados()" style="width:100%; margin-top:10px;">
+                    Fechar
+                </button>
             </div>
         </div>
 
