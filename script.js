@@ -418,6 +418,10 @@ document.addEventListener('keydown', function (e) {
 document.addEventListener('DOMContentLoaded', function () {
   console.log('🚀 Inicializando D.Sync...');
 
+  // Oculta as telas enquanto verifica a sessão
+document.getElementById('loginScreen').style.display = 'none';
+document.getElementById('appContent').style.display = 'none';
+
   carregarDados();
   carregarInsumos();
   carregarPedidoCarga();
@@ -521,9 +525,15 @@ async function carregarTipoUsuario() {
     );
   }
 
+  const nomeUsuario =
+    usuarioSupabase.user_metadata?.nome ||
+    usuarioSupabase.user_metadata?.display_name ||
+    usuarioSupabase.user_metadata?.full_name ||
+    usuarioSupabase.email;
+
   state.usuarioAtual = {
     id: usuarioSupabase.id,
-    nome: usuarioSupabase.email,
+    nome: nomeUsuario,
     tipo: data.tipo
   };
 }
