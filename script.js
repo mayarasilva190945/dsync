@@ -1026,7 +1026,10 @@ function inicializarApp() {
   verificarEstoque();
   renderizarInsumos();
   verificarAlertasInsumos();
-  mostrarToast('✅ Bem-vindo, ' + (state.usuarioAtual?.nomeUsuario || 'Usuário') + '!', 'success');
+  mostrarToast(
+    '✅ Bem-vindo, ' + (state.usuarioAtual?.nome || 'Usuário') + '!',
+    'success'
+  );
 }
 
 // ===== INSUMOS =====
@@ -5938,40 +5941,40 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   const inputManualPrat = document.getElementById('scannerPrateleiraInput');
-if (inputManualPrat) {
-  inputManualPrat.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); confirmarScannerPrateleiraManual(); }
-  });
-}
+  if (inputManualPrat) {
+    inputManualPrat.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); confirmarScannerPrateleiraManual(); }
+    });
+  }
 
-const inputManualProd = document.getElementById('scannerProdutoInput');
-if (inputManualProd) {
-  inputManualProd.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); confirmarScannerProdutoManual(); }
-  });
-}
+  const inputManualProd = document.getElementById('scannerProdutoInput');
+  if (inputManualProd) {
+    inputManualProd.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); confirmarScannerProdutoManual(); }
+    });
+  }
 
-const inputMovProd = document.getElementById('movProdutoInput');
-if (inputMovProd) {
-  inputMovProd.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); identificarProdutoMovimentacao(); }
-  });
-}
+  const inputMovProd = document.getElementById('movProdutoInput');
+  if (inputMovProd) {
+    inputMovProd.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); identificarProdutoMovimentacao(); }
+    });
+  }
 
-const inputAddProd = document.getElementById('addCodigoProdutoInput');
-if (inputAddProd) {
-  inputAddProd.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); buscarProdutoPorCodigo(); }
-  });
-}
+  const inputAddProd = document.getElementById('addCodigoProdutoInput');
+  if (inputAddProd) {
+    inputAddProd.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); buscarProdutoPorCodigo(); }
+    });
+  }
 
-setInterval(() => {
-  const fab = document.getElementById('fabScanner');
-  const app = document.getElementById('appContent');
-  if (!fab || !app) return;
-  const appVisivel = app.style.display !== 'none';
-  fab.style.display = appVisivel ? 'flex' : 'none';
-}, 500);
+  setInterval(() => {
+    const fab = document.getElementById('fabScanner');
+    const app = document.getElementById('appContent');
+    if (!fab || !app) return;
+    const appVisivel = app.style.display !== 'none';
+    fab.style.display = appVisivel ? 'flex' : 'none';
+  }, 500);
 });
 
 const _atualizarListasPedidosOriginal = typeof atualizarListasPedidos === 'function' ? atualizarListasPedidos : null;
